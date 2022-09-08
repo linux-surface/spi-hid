@@ -243,12 +243,14 @@ static int spi_hid_power_down(struct spi_hid *shid)
 	if (!shid->powered)
 		return 0;
 
-	pinctrl_select_state(shid->pinctrl, shid->pinctrl_sleep);
+	if (shid->spi->dev.of_node) {
+		pinctrl_select_state(shid->pinctrl, shid->pinctrl_sleep);
 
-	ret = regulator_disable(shid->supply);
-	if (ret) {
-		dev_err(dev, "failed to disable regulator\n");
-		return ret;
+		ret = regulator_disable(shid->supply);
+		if (ret) {
+			dev_err(dev, "failed to disable regulator\n");
+			return ret;
+		}
 	}
 
 	shid->powered = false;
@@ -1024,15 +1026,17 @@ static int spi_hid_power_up(struct spi_hid *shid)
 	shid->input_transfer_pending = 0;
 	shid->powered = true;
 
-	ret = regulator_enable(shid->supply);
-	if (ret) {
-		shid->regulator_error_count++;
-		shid->regulator_last_error = ret;
-		goto err0;
-	}
+	if (shid->spi->dev.of_node) {
+		ret = regulator_enable(shid->supply);
+		if (ret) {
+			shid->regulator_error_count++;
+			shid->regulator_last_error = ret;
+			goto err0;
+		}
 
-	/* Let VREG_S10B_1P8V stabilize */
-	usleep_range(5000, 6000);
+		/* Let VREG_S10B_1P8V stabilize */
+		usleep_range(5000, 6000);
+	}
 
 	return 0;
 
@@ -1586,13 +1590,15 @@ static int spi_hid_probe(struct spi_device *spi)
 	mutex_init(&shid->power_lock);
 	init_completion(&shid->output_done);
 
-	shid->supply = devm_regulator_get(dev, "vdd");
-	if (IS_ERR(shid->supply)) {
-		if (PTR_ERR(shid->supply) != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get regulator: %ld\n",
-					PTR_ERR(shid->supply));
-		ret = PTR_ERR(shid->supply);
-		goto err1;
+	if (dev->of_node) {
+		shid->supply = devm_regulator_get(dev, "vdd");
+		if (IS_ERR(shid->supply)) {
+			if (PTR_ERR(shid->supply) != -EPROBE_DEFER)
+				dev_err(dev, "Failed to get regulator: %ld\n",
+						PTR_ERR(shid->supply));
+			ret = PTR_ERR(shid->supply);
+			goto err1;
+		}
 	}
 
 	shid->pinctrl = devm_pinctrl_get(dev);
