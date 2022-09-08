@@ -279,6 +279,18 @@ static void spi_hid_stop_hid(struct spi_hid *shid)
 	}
 }
 
+static int spi_hid_reset_via_acpi(struct spi_hid *shid)
+{
+	acpi_handle handle = ACPI_HANDLE(&shid->spi->dev);
+	acpi_status status;
+
+	status = acpi_evaluate_object(handle, "_RST", NULL, NULL);
+	if (ACPI_FAILURE(status))
+		return -EFAULT;
+
+	return 0;
+}
+
 static int spi_hid_error_handler(struct spi_hid *shid)
 {
 	struct device *dev = &shid->spi->dev;
@@ -302,24 +314,38 @@ static int spi_hid_error_handler(struct spi_hid *shid)
 	shid->ready = false;
 	sysfs_notify(&dev->kobj, NULL, "ready");
 
-	ret = pinctrl_select_state(shid->pinctrl, shid->pinctrl_reset);
-	if (ret) {
-		dev_err(dev, "Power Reset failed\n");
-		goto out;
+	if (dev->of_node) {
+		ret = pinctrl_select_state(shid->pinctrl, shid->pinctrl_reset);
+		if (ret) {
+			dev_err(dev, "Power Reset failed\n");
+			goto out;
+		}
 	}
+
 	shid->power_state = SPI_HID_POWER_MODE_OFF;
 	shid->input_stage = SPI_HID_INPUT_STAGE_IDLE;
 	shid->input_transfer_pending = 0;
 	cancel_work_sync(&shid->reset_work);
 
-	/* Drive reset for at least 100 ms */
-	msleep(100);
+	if (dev->of_node) {
+		/* Drive reset for at least 100 ms */
+		msleep(100);
+	}
 
 	shid->power_state = SPI_HID_POWER_MODE_ACTIVE;
-	ret = pinctrl_select_state(shid->pinctrl, shid->pinctrl_active);
-	if (ret) {
-		dev_err(dev, "Power Restart failed\n");
-		goto out;
+
+	if (dev->of_node) {
+		ret = pinctrl_select_state(shid->pinctrl, shid->pinctrl_active);
+		if (ret) {
+			dev_err(dev, "Power Restart failed\n");
+			goto out;
+		}
+	} else {
+		ret = spi_hid_reset_via_acpi(shid);
+		if (ret) {
+			dev_err(dev, "Reset failed\n");
+			goto out;
+		}
 	}
 
 out:
@@ -992,6 +1018,9 @@ static int spi_hid_assert_reset(struct spi_hid *shid)
 {
 	int ret;
 
+	if (!shid->spi->dev.of_node)
+		return 0;
+
 	ret = pinctrl_select_state(shid->pinctrl, shid->pinctrl_reset);
 	if (ret)
 		return ret;
@@ -1005,6 +1034,9 @@ static int spi_hid_assert_reset(struct spi_hid *shid)
 static int spi_hid_deassert_reset(struct spi_hid *shid)
 {
 	int ret;
+
+	if (!shid->spi->dev.of_node)
+		return spi_hid_reset_via_acpi(shid);
 
 	ret = pinctrl_select_state(shid->pinctrl, shid->pinctrl_active);
 	if (ret)
@@ -1169,7 +1201,8 @@ err2:
 
 err1:
 	shid->power_state = SPI_HID_POWER_MODE_OFF;
-	pinctrl_select_state(shid->pinctrl, shid->pinctrl_sleep);
+	if (dev->of_node)
+		pinctrl_select_state(shid->pinctrl, shid->pinctrl_sleep);
 
 err0:
 	return ret;
@@ -1599,47 +1632,47 @@ static int spi_hid_probe(struct spi_device *spi)
 			ret = PTR_ERR(shid->supply);
 			goto err1;
 		}
-	}
 
-	shid->pinctrl = devm_pinctrl_get(dev);
-	if (IS_ERR(shid->pinctrl)) {
-		dev_err(dev, "Could not get pinctrl handle: %ld\n",
-				PTR_ERR(shid->pinctrl));
-		ret = PTR_ERR(shid->pinctrl);
-		goto err1;
-	}
+		shid->pinctrl = devm_pinctrl_get(dev);
+		if (IS_ERR(shid->pinctrl)) {
+			dev_err(dev, "Could not get pinctrl handle: %ld\n",
+					PTR_ERR(shid->pinctrl));
+			ret = PTR_ERR(shid->pinctrl);
+			goto err1;
+		}
 
-	shid->pinctrl_reset = pinctrl_lookup_state(shid->pinctrl, "reset");
-	if (IS_ERR(shid->pinctrl_reset)) {
-		dev_err(dev, "Could not get pinctrl reset: %ld\n",
-				PTR_ERR(shid->pinctrl_reset));
-		ret = PTR_ERR(shid->pinctrl_reset);
-		goto err1;
-	}
+		shid->pinctrl_reset = pinctrl_lookup_state(shid->pinctrl, "reset");
+		if (IS_ERR(shid->pinctrl_reset)) {
+			dev_err(dev, "Could not get pinctrl reset: %ld\n",
+					PTR_ERR(shid->pinctrl_reset));
+			ret = PTR_ERR(shid->pinctrl_reset);
+			goto err1;
+		}
 
-	shid->pinctrl_active = pinctrl_lookup_state(shid->pinctrl, "active");
-	if (IS_ERR(shid->pinctrl_active)) {
-		dev_err(dev, "Could not get pinctrl active: %ld\n",
-				PTR_ERR(shid->pinctrl_active));
-		 ret = PTR_ERR(shid->pinctrl_active);
-		 goto err1;
-	}
+		shid->pinctrl_active = pinctrl_lookup_state(shid->pinctrl, "active");
+		if (IS_ERR(shid->pinctrl_active)) {
+			dev_err(dev, "Could not get pinctrl active: %ld\n",
+					PTR_ERR(shid->pinctrl_active));
+			 ret = PTR_ERR(shid->pinctrl_active);
+			 goto err1;
+		}
 
-	shid->pinctrl_sleep = pinctrl_lookup_state(shid->pinctrl, "sleep");
-	if (IS_ERR(shid->pinctrl_sleep)) {
-		dev_err(dev, "Could not get pinctrl sleep: %ld\n",
-				PTR_ERR(shid->pinctrl_sleep));
-		ret = PTR_ERR(shid->pinctrl_sleep);
-		goto err1;
-	}
+		shid->pinctrl_sleep = pinctrl_lookup_state(shid->pinctrl, "sleep");
+		if (IS_ERR(shid->pinctrl_sleep)) {
+			dev_err(dev, "Could not get pinctrl sleep: %ld\n",
+					PTR_ERR(shid->pinctrl_sleep));
+			ret = PTR_ERR(shid->pinctrl_sleep);
+			goto err1;
+		}
 
-	ret = pinctrl_select_state(shid->pinctrl, shid->pinctrl_sleep);
-	if (ret) {
-		dev_err(dev, "Could not select sleep state\n");
-		goto err1;
-	}
+		ret = pinctrl_select_state(shid->pinctrl, shid->pinctrl_sleep);
+		if (ret) {
+			dev_err(dev, "Could not select sleep state\n");
+			goto err1;
+		}
 
-	msleep(100);
+		msleep(100);
+	}
 
 	shid->hid_desc_addr = shid->device_descriptor_register;
 
