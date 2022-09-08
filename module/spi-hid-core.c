@@ -1462,7 +1462,8 @@ spi_hid_perf_mode_store(struct device *dev,
 	unsigned long flags;
 
 	spin_lock_irqsave(&shid->input_lock, flags);
-	kstrtou8(buf, 10, &shid->perf_mode);
+	if (kstrtou8(buf, 10, &shid->perf_mode))
+		return -EINVAL;
 
 	// Reset the log
 	if (shid->perf_mode) {
