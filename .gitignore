@@ -1,0 +1,14 @@
+# kernel modules
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.cmd
+*.d
+Module.symvers
+modules.order
+.tmp_*/
+
+# vscode
+.vscode/
