@@ -1503,11 +1503,12 @@ static int spi_hid_probe(struct spi_device *spi)
 {
 	struct device *dev = &spi->dev;
 	struct spi_hid *shid;
+	struct gpio_desc *gpiod;
 	unsigned long irqflags;
-	int ret;
+	int irq, ret;
 	u32 val;
 
-	if (spi->irq <= 0) {
+	if (dev->of_node && spi->irq <= 0) {
 		dev_err(dev, "Missing IRQ\n");
 		ret = spi->irq ?: -EINVAL;
 		goto err0;
@@ -1604,13 +1605,25 @@ static int spi_hid_probe(struct spi_device *spi)
 	INIT_WORK(&shid->refresh_device_work, spi_hid_refresh_device_work);
 	INIT_WORK(&shid->error_work, spi_hid_error_work);
 
-	irqflags = irq_get_trigger_type(spi->irq) | IRQF_ONESHOT;
-	ret = request_irq(spi->irq, spi_hid_dev_irq, irqflags,
-			dev_name(&spi->dev), shid);
+	if (dev->of_node) {
+		irq = spi->irq;
+	} else {
+		gpiod = gpiod_get_index(&spi->dev, NULL, 0, GPIOD_ASIS);
+		if (IS_ERR(gpiod)) {
+			ret = PTR_ERR(gpiod);
+			goto err1;
+		}
+
+		irq = gpiod_to_irq(gpiod);
+		gpiod_put(gpiod);
+	}
+
+	irqflags = irq_get_trigger_type(irq) | IRQF_ONESHOT;
+	ret = request_irq(irq, spi_hid_dev_irq, irqflags, dev_name(&spi->dev), shid);
 	if (ret)
 		goto err1;
-	else
-		shid->irq_enabled = true;
+
+	shid->irq_enabled = true;
 
 	ret = spi_hid_assert_reset(shid);
 	if (ret) {
