@@ -1374,6 +1374,7 @@ static const struct acpi_device_id spi_hid_acpi_match[] = {
 	{ "MSHW0134", 0 },	/* Surface Pro X (SQ1) */
 	{ "MSHW0162", 0 },	/* Surface Laptop 3 (AMD) */
 	{ "MSHW0235", 0 },	/* Surface Pro X (SQ2) */
+	{ "PNP0C51",  0 },	/* Generic HID-over-SPI */
 	{},
 };
 MODULE_DEVICE_TABLE(acpi, spi_hid_acpi_match);
