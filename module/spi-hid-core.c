@@ -24,6 +24,7 @@
  * the Free Software Foundation.
  */
 
+#include <linux/acpi.h>
 #include <linux/module.h>
 #include <linux/spi/spi.h>
 #include <linux/interrupt.h>
@@ -1369,6 +1370,14 @@ static const struct of_device_id spi_hid_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, spi_hid_of_match);
 
+static const struct acpi_device_id spi_hid_acpi_match[] = {
+	{ "MSHW0134", 0 },	/* Surface Pro X (SQ1) */
+	{ "MSHW0162", 0 },	/* Surface Laptop 3 (AMD) */
+	{ "MSHW0235", 0 },	/* Surface Pro X (SQ2) */
+	{},
+};
+MODULE_DEVICE_TABLE(acpi, spi_hid_acpi_match);
+
 static ssize_t ready_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -1658,6 +1667,7 @@ static struct spi_driver spi_hid_driver = {
 		.name	= "spi_hid",
 		.owner	= THIS_MODULE,
 		.of_match_table = of_match_ptr(spi_hid_of_match),
+		.acpi_match_table = ACPI_PTR(spi_hid_acpi_match),
 	},
 	.probe		= spi_hid_probe,
 	.remove		= spi_hid_remove,
