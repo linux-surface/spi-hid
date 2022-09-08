@@ -1499,6 +1499,46 @@ static const struct attribute *const spi_hid_attributes[] = {
 	NULL	/* Terminator */
 };
 
+/* 6e2ac436-0fcf-41af-a265-b32a220dcfab */
+static const guid_t SPI_HID_DSM_GUID =
+	GUID_INIT(0x6e2ac436, 0x0fcf, 0x41af,
+		  0xa2, 0x65, 0xb3, 0x2a, 0x22, 0x0d, 0xcf, 0xab);
+
+#define SPI_HID_DSM_REVISION	1
+
+enum spi_hid_dsm_fn {
+	SPI_HID_DSM_FN_REG_ADDR = 1,
+};
+
+static int spi_hid_get_descriptor_reg_acpi(struct device *dev, u32 *reg)
+{
+	acpi_handle handle = ACPI_HANDLE(dev);
+	union acpi_object *obj;
+	u64 val;
+
+	obj = acpi_evaluate_dsm_typed(handle, &SPI_HID_DSM_GUID, SPI_HID_DSM_REVISION,
+				      SPI_HID_DSM_FN_REG_ADDR, NULL, ACPI_TYPE_INTEGER);
+	if (!obj)
+		return -EIO;
+
+	val = obj->integer.value;
+	ACPI_FREE(obj);
+
+	if (val > U32_MAX)
+		return -ERANGE;
+
+	*reg = val;
+	return 0;
+}
+
+static int spi_hid_get_descriptor_reg(struct device *dev, u32 *reg)
+{
+	if (dev->of_node)
+		return device_property_read_u32(dev, "hid-descr-addr", reg);
+	else
+		return spi_hid_get_descriptor_reg_acpi(dev, reg);
+}
+
 static int spi_hid_probe(struct spi_device *spi)
 {
 	struct device *dev = &spi->dev;
@@ -1506,7 +1546,6 @@ static int spi_hid_probe(struct spi_device *spi)
 	struct gpio_desc *gpiod;
 	unsigned long irqflags;
 	int irq, ret;
-	u32 val;
 
 	if (dev->of_node && spi->irq <= 0) {
 		dev_err(dev, "Missing IRQ\n");
@@ -1530,13 +1569,12 @@ static int spi_hid_probe(struct spi_device *spi)
 		goto err0;
 	}
 
-	ret = device_property_read_u32(dev, "hid-descr-addr", &val);
+	ret = spi_hid_get_descriptor_reg(dev, &shid->device_descriptor_register);
 	if (ret) {
-		dev_err(dev, "HID descriptor register address not provided\n");
+		dev_err(dev, "failed to get HID descriptor register address\n");
 		ret = -ENODEV;
 		goto err1;
 	}
-	shid->device_descriptor_register = val;
 
 	/*
 	* input_register is used for read approval. Set to default value here.
