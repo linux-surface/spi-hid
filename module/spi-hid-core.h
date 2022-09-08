@@ -234,6 +234,7 @@ struct spi_hid {
 	bool refresh_in_progress;
 
 	bool irq_enabled;
+	int irq;
 
 	struct regulator *supply;
 	struct pinctrl *pinctrl;

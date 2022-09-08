@@ -737,7 +737,7 @@ static void spi_hid_create_device_work(struct work_struct *work)
 
 	shid->attempts = 0;
 	if (shid->irq_enabled) {
-		disable_irq(shid->spi->irq);
+		disable_irq(shid->irq);
 		shid->irq_enabled = false;
 	} else {
 		dev_err(dev, "%s called with interrupt already disabled\n",
@@ -1133,7 +1133,7 @@ static int spi_hid_ll_open(struct hid_device *hid)
 
 	shid->power_state = SPI_HID_POWER_MODE_ACTIVE;
 	if (!shid->irq_enabled) {
-		enable_irq(spi->irq);
+		enable_irq(shid->irq);
 		shid->irq_enabled = true;
 	} else {
 		dev_err(dev, "%s called with interrupt already enabled\n",
@@ -1185,7 +1185,7 @@ static void spi_hid_ll_close(struct hid_device *hid)
 	mutex_lock(&shid->power_lock);
 
 	if (shid->irq_enabled) {
-		disable_irq(shid->spi->irq);
+		disable_irq(shid->irq);
 		shid->irq_enabled = false;
 	} else {
 		dev_err(dev, "%s called with interrupt already disabled\n",
@@ -1545,7 +1545,7 @@ static int spi_hid_probe(struct spi_device *spi)
 	struct spi_hid *shid;
 	struct gpio_desc *gpiod;
 	unsigned long irqflags;
-	int irq, ret;
+	int ret;
 
 	if (dev->of_node && spi->irq <= 0) {
 		dev_err(dev, "Missing IRQ\n");
@@ -1644,7 +1644,7 @@ static int spi_hid_probe(struct spi_device *spi)
 	INIT_WORK(&shid->error_work, spi_hid_error_work);
 
 	if (dev->of_node) {
-		irq = spi->irq;
+		shid->irq = spi->irq;
 	} else {
 		gpiod = gpiod_get_index(&spi->dev, NULL, 0, GPIOD_ASIS);
 		if (IS_ERR(gpiod)) {
@@ -1652,12 +1652,12 @@ static int spi_hid_probe(struct spi_device *spi)
 			goto err1;
 		}
 
-		irq = gpiod_to_irq(gpiod);
+		shid->irq = gpiod_to_irq(gpiod);
 		gpiod_put(gpiod);
 	}
 
-	irqflags = irq_get_trigger_type(irq) | IRQF_ONESHOT;
-	ret = request_irq(irq, spi_hid_dev_irq, irqflags, dev_name(&spi->dev), shid);
+	irqflags = irq_get_trigger_type(shid->irq) | IRQF_ONESHOT;
+	ret = request_irq(shid->irq, spi_hid_dev_irq, irqflags, dev_name(&spi->dev), shid);
 	if (ret)
 		goto err1;
 
@@ -1701,7 +1701,7 @@ static void spi_hid_remove(struct spi_device *spi)
 	dev_info(dev, "%s\n", __func__);
 
 	spi_hid_power_down(shid);
-	free_irq(spi->irq, shid);
+	free_irq(shid->irq, shid);
 	shid->irq_enabled = false;
 	sysfs_remove_files(&dev->kobj, spi_hid_attributes);
 	spi_hid_stop_hid(shid);
