@@ -379,7 +379,7 @@ static void spi_hid_reset_work(struct work_struct *work)
 
 	trace_spi_hid_reset_work(shid);
 
-	dev_dbg(dev, "Reset Handler\n");
+	dev_err(dev, "Reset Handler\n");
 	if (shid->ready) {
 		dev_err(dev, "Spontaneous FW reset!");
 		shid->ready = false;
@@ -416,7 +416,7 @@ static int spi_hid_input_report_handler(struct spi_hid *shid,
 	struct spi_hid_input_report r;
 	int ret;
 
-	dev_dbg(dev, "Input Report Handler\n");
+	dev_err(dev, "Input Report Handler\n");
 
 	trace_spi_hid_input_report_handler(shid);
 
@@ -472,7 +472,7 @@ static int spi_hid_response_handler(struct spi_hid *shid,
 		struct spi_hid_input_buf *buf)
 {
 	trace_spi_hid_response_handler(shid);
-	dev_dbg(&shid->spi->dev, "Response Handler\n");
+	dev_err(&shid->spi->dev, "Response Handler\n");
 
 	/* completion_done returns 0 if there are waiters, otherwise 1 */
 	if (completion_done(&shid->output_done))
@@ -634,7 +634,7 @@ static int spi_hid_process_input_report(struct spi_hid *shid,
 		ret = 0;
 		break;
 	case SPI_HID_REPORT_TYPE_DEVICE_DESC:
-		dev_dbg(dev, "Received device descriptor\n");
+		dev_err(dev, "Received device descriptor\n");
 		/* Reset attempts at every device descriptor fetch */
 		shid->attempts = 0;
 		raw = (struct spi_hid_device_desc_raw *) buf->content;
@@ -748,7 +748,7 @@ static void spi_hid_create_device_work(struct work_struct *work)
 	int ret;
 
 	trace_spi_hid_create_device_work(shid);
-	dev_dbg(dev, "Create device work\n");
+	dev_err(dev, "Create device work\n");
 
 	if (shid->desc.hid_version != SPI_HID_SUPPORTED_VERSION) {
 		dev_err(dev, "Unsupported device descriptor version %4x\n",
@@ -795,7 +795,7 @@ static void spi_hid_refresh_device_work(struct work_struct *work)
 	u32 new_crc32;
 
 	trace_spi_hid_refresh_device_work(shid);
-	dev_dbg(dev, "Refresh device work\n");
+	dev_err(dev, "Refresh device work\n");
 
 	if (shid->desc.hid_version != SPI_HID_SUPPORTED_VERSION) {
 		dev_err(dev, "Unsupported device descriptor version %4x\n",
@@ -820,7 +820,7 @@ static void spi_hid_refresh_device_work(struct work_struct *work)
 	new_crc32 = crc32_le(0, (unsigned char const *) shid->response.content, (size_t)ret);
 	if (new_crc32 == shid->report_descriptor_crc32)
 	{
-		dev_dbg(dev, "Refresh device work - returning\n");
+		dev_err(dev, "Refresh device work - returning\n");
 		shid->ready = true;
 		sysfs_notify(&dev->kobj, NULL, "ready");
 		goto out;
@@ -957,6 +957,9 @@ static void spi_hid_input_header_complete(void *_shid)
 	}
 
 	spi_hid_populate_input_header(shid->input.header, &header);
+
+	dev_err(dev, "read header: version=0x%02x, report_type=0x%02x, report_length=%u, fragment_id=0x%02x, sync_const=0x%02x\n",
+		header.version, header.report_type, header.report_length, header.fragment_id, header.sync_const);
 
 	ret = spi_hid_bus_validate_header(shid, &header);
 	if (ret) {
